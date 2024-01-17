@@ -5,7 +5,7 @@ use ethers::types::{Bytes, U256};
 use log::{debug, info};
 use serde_json::Value;
 
-use crate::constants::APP_DATA;
+use crate::constants::{APP_DATA, MILKMAP_APPDATA};
 
 #[derive(Debug)]
 pub struct Quote {
@@ -49,16 +49,22 @@ impl CowAPIClient {
         buy_token: Address,
         sell_amount_before_fee: U256,
         verification_gas_limit: u64,
+        is_from_milkmap: bool,
     ) -> Result<Quote> {
         let http_client = reqwest::Client::new();
-
+        
+        let app_data = if is_from_milkmap {
+            "0x".to_string() + MILKMAP_APPDATA
+        } else {
+            "0x".to_string() + APP_DATA
+        };
         let response = http_client
             .post(self.base_url.clone() + "quote")
             .json(&serde_json::json!({
                 "sellToken": sell_token,
                 "buyToken": buy_token,
                 "sellAmountBeforeFee": sell_amount_before_fee.to_string(),
-                "appData": "0x".to_string() + APP_DATA,
+                "appData": app_data,
                 "kind": "sell",
                 "partiallyFillable": false,
                 "from": order_contract,
@@ -72,6 +78,7 @@ impl CowAPIClient {
             .send()
             .await?;
 
+        
         let response_body = match response.error_for_status_ref() {
             Ok(_) => response.json::<Value>().await?,
             Err(err) => {
@@ -123,8 +130,36 @@ impl CowAPIClient {
             eip_1271_signature,
             quote_id,
         }: Order<'_>,
+        is_from_milkmap: bool,
     ) -> Result<String> {
         let http_client = reqwest::Client::new();
+
+        debug!(
+            "Posting order to CoW API with the following body: {:?}",
+            serde_json::json!({
+                "sellToken": sell_token,
+                "buyToken": buy_token,
+                "sellAmount": sell_amount.to_string(),
+                "buyAmount": buy_amount.to_string(),
+                "validTo": valid_to,
+                "appData": if is_from_milkmap {
+                    "0x".to_string() + MILKMAP_APPDATA
+                } else {
+                    "0x".to_string() + APP_DATA
+                },
+                "feeAmount": fee_amount.to_string(),
+                "kind": "sell",
+                "partiallyFillable": false,
+                "receiver": receiver,
+                "signature": eip_1271_signature.to_string(),
+                "from": order_contract,
+                "sellTokenBalance": "erc20",
+                "buyTokenBalance": "erc20",
+                "signingScheme": "eip1271",
+                "quoteId": quote_id,
+            })
+        );
+
         let response = http_client
             .post(self.base_url.clone() + "orders")
             .json(&serde_json::json!({
@@ -133,7 +168,11 @@ impl CowAPIClient {
                 "sellAmount": sell_amount.to_string(),
                 "buyAmount": buy_amount.to_string(),
                 "validTo": valid_to,
-                "appData": "0x2B8694ED30082129598720860E8E972F07AA10D9B81CAE16CA0E2CFB24743E24",
+                "appData": if is_from_milkmap {
+                    "0x".to_string() + MILKMAP_APPDATA
+                } else {
+                    "0x".to_string() + APP_DATA
+                },
                 "feeAmount": fee_amount.to_string(),
                 "kind": "sell",
                 "partiallyFillable": false,

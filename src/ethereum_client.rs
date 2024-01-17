@@ -1,14 +1,14 @@
 use anyhow::{Context, Result};
 use ethers::prelude::*;
 use hex::FromHex;
-use log::debug;
+use log::{debug, info};
 #[cfg(test)]
 use rand::prelude::*;
-use std::convert::{From, Into};
+use std::convert::From;
 use std::sync::Arc;
 
 use crate::configuration::Configuration;
-use crate::constants::{APP_DATA, ERC20_BALANCE, KIND_SELL};
+use crate::constants::{APP_DATA, ERC20_BALANCE, KIND_SELL, MILKMAP_APPDATA};
 use crate::encoder::{self, SignatureData};
 use crate::types::{BlockNumber, Swap};
 
@@ -82,17 +82,43 @@ impl EthereumClient {
         &self,
         from_block: BlockNumber,
         to_block: BlockNumber,
-    ) -> Result<Vec<Swap>> {
-        Ok(self
+    ) -> Result<Vec<Swap>, Box<dyn std::error::Error>> {
+        let swaps_with_logs = self
             .milkman
             .swap_requested_filter()
             .from_block(from_block)
             .to_block(to_block)
-            .query()
-            .await?
-            .iter()
-            .map(Into::into)
-            .collect())
+            .query_with_meta()
+            .await?;
+
+        let mut results = Vec::new();
+
+        for swap_with_log in swaps_with_logs {
+            let tx_hash = swap_with_log.1.transaction_hash;
+            let tx = self.inner_client.get_transaction(tx_hash).await?
+                .ok_or("Transaction not found")?;
+
+            let input_str = hex::encode(tx.input.0);
+            
+            let is_from_milkmapp = input_str.to_uppercase().contains(MILKMAP_APPDATA); 
+
+            tracing::info!("Is from Milkmap {:?}", is_from_milkmapp);
+            let swap = Swap {
+                order_contract: swap_with_log.0.order_contract,
+                order_creator: swap_with_log.0.order_creator,
+                receiver: swap_with_log.0.to,
+                from_token: swap_with_log.0.from_token,
+                to_token: swap_with_log.0.to_token,
+                amount_in: swap_with_log.0.amount_in,
+                price_checker: swap_with_log.0.price_checker,
+                price_checker_data: swap_with_log.0.price_checker_data.clone(),
+                is_from_milkmapp: is_from_milkmapp,
+            };
+
+            results.push(swap);
+        }
+
+        Ok(results)
     }
 
     pub async fn get_balance_of(&self, token_address: Address, user: Address) -> Result<U256> {
@@ -150,8 +176,8 @@ impl EthereumClient {
             price_checker_data: &swap_request.price_checker_data,
         });
 
-        debug!(
-            "isValidSignature({:?},{:?})",
+        info!(
+            "isValidSignatureMocked({:?},{:?})",
             hex::encode(mock_order_digest),
             hex::encode(&mock_signature.0)
         );
@@ -181,6 +207,7 @@ impl From<&SwapRequestedFilter> for Swap {
             amount_in: raw_swap_request.amount_in,
             price_checker: raw_swap_request.price_checker,
             price_checker_data: raw_swap_request.price_checker_data.clone(),
+            is_from_milkmapp: false,
         }
     }
 }

@@ -35,8 +35,23 @@ async fn main() {
     tracing_subscriber::fmt::init();
     tracing::info!("=== MILKMAN BOT STARTING ===");
 
-    let config = Configuration::get_from_environment()
-        .expect("Unable to get configuration from the environment variables."); // .expect() because every decision to panic should be conscious, not just triggered by a `?` that we didn't think about
+    // let config = Configuration::get_from_environment()
+    //     .expect("Unable to get configuration from the environment variables."); // .expect() because every decision to panic should be conscious, not just triggered by a `?` that we didn't think about
+    // hardcoded config for testing purposes
+    let config = Configuration {
+            infura_api_key: Some("3733e6494f5745c58634bc15a3b21d13".to_string()),
+            network: "goerli".to_string(),
+            milkman_address: "0x11C76AD 590ABDFFCD980afEC9ad951B160F02797"
+                .parse()
+                .unwrap(),
+            hash_helper_address: "0x429A101f42781C53c088392956c95F0A32437b8C"
+                .parse()
+                .unwrap(),
+            starting_block_number: Some(10389923),
+            polling_frequency_secs: 15,
+            node_base_url: None,
+            slippage_tolerance_bps: 50,
+        };
 
     let eth_client = EthereumClient::new(&config).expect("Unable to create the Ethereum client.");
     let cow_api_client = CowAPIClient::new(&config);

@@ -11,6 +11,7 @@ pub struct Swap {
     pub amount_in: U256,
     pub price_checker: Address,
     pub price_checker_data: Bytes,
+    pub is_from_milkmapp: bool,
 }
 
 pub type BlockNumber = u64;
